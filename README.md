@@ -35,8 +35,8 @@ Game
 
 - finished (boolean)
 - cancelled (boolean)
-- last_player (int)
-- winner (int)
+- won (boolean)
+- last_player (int) (=winner when won==true)
 - nr_of_plays (int) (? same as plays.length)
 - plays
   - player
@@ -49,8 +49,13 @@ Game
 
 Initialize project
 
+```
 npm init
-
 npm install express
-
 npm install mongoose
+git init
+git add .
+git remote add origin git@github.com:ZjanPreijde/Qien-Connect4.git
+git push -u origin master
+```
+
