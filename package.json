@@ -1,0 +1,21 @@
+{
+  "name": "qonnect-four",
+  "version": "1.0.0",
+  "description": "Connect Four assignment for Qien BV",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "connect4",
+    "qien",
+    "assignment"
+  ],
+  "author": "Zjan Preijde",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.16.4",
+    "mongoose": "^5.4.3"
+  }
+}
