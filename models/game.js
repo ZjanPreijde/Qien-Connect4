@@ -6,8 +6,18 @@ let gameSchema = new mongoose.Schema({
   won:        {type: Boolean, default: false},
   lastPlayer: {type: Number, default: 0},
   nrOfPlays:  {type: Number, default: 0},
-  plays:     [{type: mongoose.Schema.Types.ObjectId, ref: "Play"}],
-  state:     [{type: mongoose.Schema.Types.ObjectId, ref: "Column"}]
+  plays: [{ 
+    player: {type: Number, required: true},
+    column: {type: Number, required: true},
+    state: [{
+      columnNumber: {type: Number, required: true},
+      moves:        [Number]
+    }]
+  }],
+  state: [{
+    columnNumber: {type: Number, required: true},
+    moves:        [Number]
+  }]
 })
 
 module.exports = mongoose.model("Game", gameSchema)

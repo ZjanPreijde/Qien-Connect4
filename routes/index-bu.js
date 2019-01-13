@@ -1,15 +1,17 @@
 let express  = require("express"),
     app      = express(),
     mongoose = require('mongoose'),
-    Game     = require('../models/game')
-mongoose.Promise = global.Promise
+    Game     = require('../models/game'),
+    Column   = require('../models/column'),
+    Play     = require('../models/play')
 
 // check this out later, probably to do with scoping or async? Revisit
 //let checkRequestBody = require('../validations/checkRequestBody')
 
 let resultMsg = { action: 0, value: 0, player: 0,
-      status: true, message: "", state: {}, stateParsed: [] },
+      status: true, message: "", state: {} },
     errorMsg  = {} // error_message:"", error_id:0
+
 console.log("===================")
 // Catch all
 app.get('*', (req, res) => {
@@ -55,17 +57,14 @@ async function newGame() {
     await Game.create({})
       .then( (newGame) => {
         let newColumns = [1,2,3,4,5,6,7].map( function(col) {
-          return  { columnNumber: col, moves: [] }
+          return new Column( { columnNumber: col, moves: [] } )
         })
         newColumns.forEach( newColumn => {
            newGame.state.push(newColumn) }
         )
         newGame.save()
-        resultMsg.message     = "New game started"
-        resultMsg.state       = newGame.state.map(function(col) {
-          return col.moves
-        })
-        resultMsg.stateParsed = newGame.state.map(function(col) {
+        resultMsg.message = "New game started"
+        resultMsg.state   = newGame.state.map(function(col) {
           return "col " + col.columnNumber + ": "
             + col.moves.reduce(
                 (acc, cur) => { acc + cur.toString() }
@@ -132,39 +131,25 @@ async function playGame() {
     console.log("playing game")
     await Game.findOne({finished: false})
       .then( game => {
-        game.lastPlayer = resultMsg.player
-        game.nrOfPlays += 1
-        if (game.nrOfPlays === 42 /* MAXNROFPLAYS */) {
-          game.finished = true
-        }
-        let column = game.state.filter(
+        let col = game.state.filter(
           ( col ) => col.columnNumber === resultMsg.value
         )
-        column[0].moves.push(resultMsg.player)
-        let newState = game.state
-        let play = {
+        col.push(resultMsg.value)
+        let state = game.state
+        let play = new Play({
             player: resultMsg.player
           , column: resultMsg.value
-          , state:  newState
-          }
+          , state:  state
+          })
         game.plays.push(play)
-        resultMsg.message     = "Game played"
-        resultMsg.state       = game.state.map(function(col) {
-          return col.moves
-        })
-        resultMsg.stateParsed = game.state.map(function(col) {
-          // col.moves.reduce() does not work here for CoreMongooseArray
-          let movesString = ""
-          for (i = 0; i < col.moves.length; i++) {
-            movesString += col.moves[i].toString()
-          }
-          return "col " + col.columnNumber + ": " +  movesString
-        })
-        return game
-      })
-      .then( game => {
-        checkGame(game)
         game.save()
+        resultMsg.message = "Game played"
+        resultMsg.state   = game.state.map(function(col) {
+          return "col " + col.columnNumber + ": "
+            + col.moves.reduce(
+                (acc, cur) => { acc + cur.toString() }
+              , "")
+              })
       })
       .catch( err => {
         console.log("Error:", err)
@@ -183,40 +168,11 @@ async function playGame() {
     return err
   }
   finally {
-    console.log('leaving playGame()')
+    console.log('leaving cancelGame()')
     return
   }
 }
 
-async function checkGame(game) {
-  console.log('checkGame() called ...')
-  try {
-    let finished = false, won = false
-    let checkPlayer = game.lastPlayer
-    let board = []
-    game.state.forEach(column => {
-      board.push(column.moves.reduce((acc, el) => acc += el.toString(), ""))
-    })
-    // console.log(board)
-    board.forEach(vertical => {
-      if (vertical.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
-        game.finished = true
-        game.won = true
-        resultMsg.message = "Game won by Player " + checkPlayer
-      }
-    })
-  } catch (err) {
-    console.log("Error:", err)
-    resultMsg.status = false
-    errorMsg = { error_message: 'Error checking game'
-      , error_id: 401 }
-    console.log(errorMsg)
-    return err
-  }
-  finally {
-    console.log('leaving checkGame()')
-  }
-}
 async function playRequest() {
   console.log("playRequest() called ...")
   const NEWGAME    = 1
@@ -322,6 +278,7 @@ async function checkRequest() {
     try {
       await Game.findOne({finished: false})
         .then( game => {
+          console.log(game)
           if (game === null) {
             resultMsg.status = false
             errorMsg = {
@@ -344,23 +301,21 @@ async function checkRequest() {
               , error_id: 226 }
           } else {
             let column = game.state.filter(
-              ( col ) => col.columnNumber === resultMsg.value
+              ( col ) => col.columnNumber === 1 //resultMsg.value
             )
-            // game.state.forEach( column =>  console.log(column.columnNumber) )
-            // console.log("state", game.state)
+            game.state.forEach( column =>  console.log(column.columnNumber) )
+            console.log("state", game.state)
             console.log("column", column)
-            console.log("moves", column[0].moves)
-            // resultMsg.status = false
-            // errorMsg = {error_message: "DEBUGGING", error_id: 9999}
+            console.log("moves", column.moves)
+            resultMsg.status = false
 
-            let moves = column[0].moves
-            console.log(moves)
-            if (moves.length >= 6) {
-              resultMsg.status = false
-              errorMsg = {
-                  error_message: 'Column is full'
-                , error_id: 227 }
-            }
+            // let moves = column.moves
+            // if (column.moves.length() >= 6) {
+            //   resultMsg.status = false
+            //   errorMsg = {
+            //       error_message: 'Column is full'
+            //     , error_id: 227 }
+            // }
           }
         })
         .catch( err => {

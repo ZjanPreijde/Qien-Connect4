@@ -6,7 +6,8 @@ let express  = require('express'),
     ip       = process.env.IP   || "",
     port     = process.env.PORT || 3000
 
-let dbUrl = 'mongodb://localhost:27017/connect_four'
+// Check whether DB is available
+let dbUrl = process.env.DBNAME || 'mongodb://localhost:27017/connect_four'
 mongoose.connect(dbUrl, { useNewUrlParser: true })
   .then( (db) => {
     console.log('connected to ', dbUrl)
