@@ -1,9 +1,6 @@
 let express  = require('express'),
     app      = express(),
     mongoose = require('mongoose'),
-    Game     = require('./models/game'),
-    Column   = require('./models/column'),
-    Play     = require('./models/play'),
     // Adding ip="http://localhost" to .listen()
     //  throws an error locally :-|
     ip       = process.env.IP   || "",
@@ -20,12 +17,15 @@ mongoose.connect(dbUrl, { useNewUrlParser: true })
     console.log(err)
   })
 
+// Middleware
+app.use(express.json())
+
+// Routes
+let routes = require('./routes/index')
+app.use('/', routes)
+
 // Start server
 const startServer = () => {
-  // Catch all
-  app.get('*', (req, res) => {
-    res.send("Hi, welcome to Connect Four")
-  })
   app.listen(port, ip, () => {
     console.log('Server listening on port', port, ' ....')
   })
