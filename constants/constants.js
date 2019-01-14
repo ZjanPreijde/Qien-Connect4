@@ -99,7 +99,10 @@ module.exports = {
   },
   ERRPLAYCOLUMNFULL: {
       error_message: 'Column is full',
-      error_id: 227 
+      error_id: 227
+  },
+  ERRCHKERROR1: {
+      error_message: 'Error checking game',
+      error_id: 301
   }
-
 }

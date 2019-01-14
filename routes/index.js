@@ -102,6 +102,7 @@ const checkRequestBody = (req, res) => {
       resultMsg.status = false
     } else if ( !Number.isInteger(req.body.player) ) {
       errorMsg = Constants.ERRPLAYERNOINT
+      errorMsg.error_message += " (" + req.body.player + ")"
       resultMsg.status = false
     } else if ( req.body.player < Constants.MINPLAYER
         || req.body.player > Constants.MAXPLAYER ) {
@@ -377,19 +378,18 @@ async function playGame() {
 async function checkGame(game) {
   myLog('checkGame() called ...')
   try {
-    let finished = false, won = false
     let checkPlayer = game.lastPlayer
 
     // Check vertical
-    let board = []
+    let columns = []
     game.state.forEach(column => {
-      board.push(column.moves.reduce((acc, el) => acc += el.toString(), ""))
+      columns.push(column.moves.reduce((acc, el) => acc += el.toString(), ""))
     })
-    board.forEach(vertical => {
+    columns.forEach(vertical => {
       if (vertical.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
         game.finished = true
-        game.won = true
-        resultMsg.message = "Game won by Player " + checkPlayer
+        game.won      = true
+        resultMsg.message = "Game won by Player " + checkPlayer + "!"
       }
     })
     if (!game.finished) {
@@ -401,8 +401,7 @@ async function checkGame(game) {
   } catch (err) {
     myLog("Error:", err)
     resultMsg.status = false
-    errorMsg = { error_message: 'Error checking game'
-      , error_id: 401 }
+    errorMsg = Constants.ERRCHKERROR1
   }
   finally {
     myLog('leaving checkGame()')
