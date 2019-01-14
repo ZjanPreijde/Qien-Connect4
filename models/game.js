@@ -1,4 +1,5 @@
 let mongoose = require('mongoose')
+mongoose.Promise = global.Promise
 
 let gameSchema = new mongoose.Schema({
   finished:   {type: Boolean, default: false},
@@ -6,7 +7,7 @@ let gameSchema = new mongoose.Schema({
   won:        {type: Boolean, default: false},
   lastPlayer: {type: Number, default: 0},
   nrOfPlays:  {type: Number, default: 0},
-  plays: [{ 
+  plays: [{
     player: {type: Number, required: true},
     column: {type: Number, required: true},
     state: [{

@@ -1,56 +1,248 @@
-let express  = require("express"),
-    app      = express(),
-    mongoose = require('mongoose'),
-    Game     = require('../models/game')
-mongoose.Promise = global.Promise
+let express = require("express"),
+    app     = express(),
+    Game    = require('../models/game')
 
-// check this out later, probably to do with scoping or async? Revisit
+const Constants = require('../constants/constants')
+
+// Does not work, check this out later, probably to do with scoping? Revisit
 //let checkRequestBody = require('../validations/checkRequestBody')
 
 let resultMsg = { action: 0, value: 0, player: 0,
-      status: true, message: "", state: {}, stateParsed: [] },
+      status: true, message: "", state: {} },
     errorMsg  = {} // error_message:"", error_id:0
-console.log("===================")
+
+const consoleLog = false,
+   myLog = (line) => {if (consoleLog) {console.log(line)}}
+
+myLog("===================")
 // Catch all
 app.get('*', (req, res) => {
-  // Check reqeuest body
-  console.log("-------------------")
+  // Check request body
+  myLog("-------------------")
   async function processRequest() {
     try {
-      console.log('calling checkRequestBody()')
+      myLog('calling checkRequestBody()')
+      // Check request body for missing/invalid values
       await checkRequestBody(req, res)
-      console.log('after checkRequestBody()')
-      // let [result, error] =
+      myLog('after checkRequestBody()')
+
       if (resultMsg.status) {
-        console.log('calling checkRequest()')
+        // Check request in game context
+        myLog('calling checkRequest()')
         await checkRequest()
-        console.log('after checkRequest()')
-      }
-      if (resultMsg.status) {
-        console.log('calling playRequest()')
-        await playRequest()
-        console.log('after playRequest()')
+        myLog('after checkRequest()')
       }
 
-      // Temp
-      errorMsg = { ...errorMsg, reqBody: req.body }
+      if (resultMsg.status) {
+        // Honour request
+        myLog('calling playRequest()')
+        await playRequest()
+        myLog('after playRequest()')
+      }
 
       // Return response
       res.setHeader('Content-Type', 'application/json')
       res.send( JSON.stringify( { ...resultMsg, ...errorMsg } ) )
     }
     catch (error) {
-      console.log(error)
+      myLog(error)
     }
   }
 
   processRequest()
 })
 
+const checkRequestBody = (req, res) => {
+  myLog("checkRequestBody() called ...")
+  // Reset messages
+  resultMsg = { action: 0, value: 0, player: 0,
+    status: true, message: "", state: {} }
+  errorMsg  = {}
+
+  // Check Action
+  if ( req.body.action === undefined ) {
+    errorMsg = Constants.ERRACTIONUNDEF
+    resultMsg.status = false
+  } else if ( !Number.isInteger(req.body.action) ) {
+    errorMsg = Constants.ERRACTIONNOINT
+    errorMsg.error_message += " (" + req.body.action + ")"
+    resultMsg.status = false
+  } else if ( ![Constants.NEWGAME, Constants.CANCELGAME, Constants.PLAYGAME]
+      .includes(req.body.action) ) {
+    errorMsg = Constants.ERRACTIONOUTOB
+    errorMsg.error_message += " (" + req.body.action + ")"
+    resultMsg.status = false
+  } else {
+    resultMsg.action = req.body.action
+  }
+
+  // Check value if playing game
+  if (resultMsg.status && resultMsg.action === Constants.PLAYGAME) {
+    if ( req.body.value === undefined ) {
+      errorMsg = Constants.ERRVALUEUNDEF
+      resultMsg.status = false
+    } else if ( !Number.isInteger(req.body.value) ) {
+      errorMsg = Constants.ERRVALUENOINT
+      errorMsg.error_message += " (" + req.body.value + ")"
+      resultMsg.status = false
+    } else if ( req.body.value < Constants.MINVALUE ||
+        req.body.value > Constants.MAXVALUE ) {
+      errorMsg = Constants.ERRVALUEOUTOB
+      errorMsg.error_message += " (" + req.body.value + ")"
+      resultMsg.status = false
+    } else {
+      resultMsg.value = req.body.value
+    }
+  }
+
+  // Check player if playing game
+  if (resultMsg.status && resultMsg.action === Constants.PLAYGAME) {
+    if ( req.body.player === undefined ) {
+      errorMsg = Constants.ERRPLAYERUNDEF
+      resultMsg.status = false
+    } else if ( !Number.isInteger(req.body.player) ) {
+      errorMsg = Constants.ERRPLAYERNOINT
+      resultMsg.status = false
+    } else if ( req.body.player < Constants.MINPLAYER
+        || req.body.player > Constants.MAXPLAYER ) {
+      errorMsg = Constants.ERRPLAYEROUTOB
+      errorMsg.error_message += " (" + req.body.player + ")"
+      resultMsg.status = false
+    } else {
+      resultMsg.player = req.body.player
+    }
+  }
+  myLog("leaving checkRequestBody()")
+  return [resultMsg, errorMsg]
+}
+
+async function checkRequest() {
+  myLog("checkRequest() called ...")
+  if (resultMsg.action === Constants.NEWGAME) {
+    try {
+      // This does not work!! Allows to create new game even if game is active.
+      await Game.findOne({finished: false})
+        .then( game => {
+          if (!game === null) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRNEWSTILLACTIVE
+          }
+          return game
+        })
+        .catch( err => {
+          myLog("Error: ", err)
+          resultMsg.status = false
+          errorMsg = Constants.ERRNEWERROR2
+          return err
+        })
+    } catch (err) {
+      myLog("Error: ", err)
+      resultMsg.status = false
+      errorMsg = Constants.ERRNEWERROR2
+      return err
+    }
+  }
+
+  if (resultMsg.action === Constants.CANCELGAME) {
+    try {
+      await Game.findOne({finished: false})
+        .then( game => {
+          if (game === null) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRCNCNOACTIVE
+          }
+          return game
+        })
+        .catch( err => {
+          myLog("Error: ", err)
+          resultMsg.status = false
+          errorMsg = Constants.ERRCNCNOERROR2
+          return err
+        })
+    } catch (err) {
+      myLog("Error: ", err)
+      resultMsg.status = false
+      errorMsg = Constants.ERRCNCNOERROR1
+      return err
+    }
+  }
+
+  if (resultMsg.action === Constants.PLAYGAME) {
+    try {
+      await Game.findOne({finished: false})
+        .then( game => {
+          if (game === null) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRPLAYNOACTIVE
+          } else if (game.nrOfPlays === Constants.MAXNROFPLAYS ) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRPLAYMAXREACHED
+          } else if (game.lastPlayer === resultMsg.player) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRPLAYSAMEPLAYER
+          } else if (game.lastPlayer === 0 && resultMsg.player !== 1) {
+            resultMsg.status = false
+            errorMsg = Constants.ERRPLAYSTARTFIRST
+          } else {
+            let column = game.state.filter(
+              ( col ) => col.columnNumber === resultMsg.value
+            )
+            // Why is this [0]?
+            let moves = column[0].moves
+            myLog(moves)
+            if (moves.length >= 6) {
+              resultMsg.status = false
+              errorMsg = Constants.ERRPLAYCOLUMNFULL
+            }
+          }
+        })
+        .catch( err => {
+          myLog("Error: ", err)
+          resultMsg.status = false
+          errorMsg = Constants.ERRPLAYERROR2
+        })
+    } catch (err) {
+      myLog("Error: ", err)
+      resultMsg.status = false
+      errorMsg = Constants.ERRPLAYERROR1
+    }
+  }
+}
+
+async function playRequest() {
+  myLog("playRequest() called ...")
+  if (resultMsg.action === Constants.NEWGAME) {
+    try {
+      await newGame()
+    } catch (err) {
+      myLog("Error: ", err)
+    }
+    finally {
+      myLog('leaving checkRequest()')
+    }
+  }
+  if (resultMsg.action === Constants.CANCELGAME) {
+    try {
+      await cancelGame()
+    } catch (err) {
+      myLog("Error: ", err)
+    }
+  }
+  if (resultMsg.action === Constants.PLAYGAME) {
+    try {
+      await playGame()
+    } catch (err) {
+      myLog("Error: ", err)
+    }
+  }
+
+  myLog("leaving playRequest()")
+}
+
 async function newGame() {
-  console.log('newGame() called ...')
+  myLog('newGame() called ...')
   try {
-    console.log("creating new game")
+    myLog("creating new game")
     await Game.deleteMany({}).exec()
     await Game.create({})
       .then( (newGame) => {
@@ -61,43 +253,40 @@ async function newGame() {
            newGame.state.push(newColumn) }
         )
         newGame.save()
-        resultMsg.message     = "New game started"
-        resultMsg.state       = newGame.state.map(function(col) {
+        resultMsg.message = "New game started"
+        resultMsg.state   = newGame.state.map( function(col) {
           return col.moves
         })
-        resultMsg.stateParsed = newGame.state.map(function(col) {
-          return "col " + col.columnNumber + ": "
-            + col.moves.reduce(
-                (acc, cur) => { acc + cur.toString() }
-              , "")
-        })
-        // return newGame
+        // resultMsg.stateParsed = newGame.state.map(function(col) {
+        //   return "col " + col.columnNumber + ": "
+        //     + col.moves.reduce(
+        //         (acc, cur) => { acc + cur.toString() }
+        //       , "")
+        // })
       })
       .catch( (err) => {
-        console.log(err)
+        myLog(err)
         resultMsg.status = false
         errorMsg = { error_message: 'New game could not be created'
           , error_id: 302 }
-        // return err
       })
   }
   catch (err) {
-    console.log("Error:", err)
+    myLog("Error:", err)
     resultMsg.status = false
     errorMsg = { error_message: 'New game could not be created'
       , error_id: 301 }
-    // return error
   }
   finally {
-    console.log('leaving newGame()')
+    myLog('leaving newGame()')
     return
   }
 }
 
 async function cancelGame() {
-  console.log('cancelGame() called ...')
+  myLog('cancelGame() called ...')
   try {
-    console.log("cancelling game")
+    myLog("cancelling game")
     await Game.findOne({finished: false})
       .then( game => {
         game.set( { finished: true, cancelled: true } )
@@ -105,41 +294,38 @@ async function cancelGame() {
         resultMsg.message = "Game cancelled"
       })
       .catch( err => {
-        console.log("Error:", err)
+        myLog("Error:", err)
         resultMsg.status = false
         errorMsg = { error_message: 'Game could not be cancelled'
           , error_id: 304 }
-        return error
       })
   }
   catch (err) {
-    console.log("Error:", err)
+    myLog("Error:", err)
     resultMsg.status = false
     errorMsg = { error_message: 'Game could not be cancelled'
       , error_id: 303 }
-    console.log(errorMsg)
-    return err
   }
   finally {
-    console.log('leaving cancelGame()')
-    return
+    myLog('leaving cancelGame()')
   }
 }
 
 async function playGame() {
-  console.log('playGame() called ...')
+  myLog('playGame() called ...')
   try {
-    console.log("playing game")
+    myLog("playing game")
     await Game.findOne({finished: false})
       .then( game => {
         game.lastPlayer = resultMsg.player
         game.nrOfPlays += 1
-        if (game.nrOfPlays === 42 /* MAXNROFPLAYS */) {
+        if (game.nrOfPlays === Constants.MAXNROFPLAYS ) {
           game.finished = true
         }
         let column = game.state.filter(
           ( col ) => col.columnNumber === resultMsg.value
         )
+        // Why is this [0]?
         column[0].moves.push(resultMsg.player)
         let newState = game.state
         let play = {
@@ -152,14 +338,14 @@ async function playGame() {
         resultMsg.state       = game.state.map(function(col) {
           return col.moves
         })
-        resultMsg.stateParsed = game.state.map(function(col) {
-          // col.moves.reduce() does not work here for CoreMongooseArray
-          let movesString = ""
-          for (i = 0; i < col.moves.length; i++) {
-            movesString += col.moves[i].toString()
-          }
-          return "col " + col.columnNumber + ": " +  movesString
-        })
+        // resultMsg.stateParsed = game.state.map(function(col) {
+        //   // col.moves.reduce() does not work here for CoreMongooseArray
+        //   let movesString = ""
+        //   for (i = 0; i < col.moves.length; i++) {
+        //     movesString += col.moves[i].toString()
+        //   }
+        //   return "col " + col.columnNumber + ": " +  movesString
+        // })
         return game
       })
       .then( game => {
@@ -167,7 +353,7 @@ async function playGame() {
         game.save()
       })
       .catch( err => {
-        console.log("Error:", err)
+        myLog("Error:", err)
         resultMsg.status = false
         errorMsg = { error_message: 'Game could not be played'
           , error_id: 306 }
@@ -175,29 +361,30 @@ async function playGame() {
       })
   }
   catch (err) {
-    console.log("Error:", err)
+    myLog("Error:", err)
     resultMsg.status = false
     errorMsg = { error_message: 'Game could not be played'
       , error_id: 305 }
-    console.log(errorMsg)
+    myLog(errorMsg)
     return err
   }
   finally {
-    console.log('leaving playGame()')
+    myLog('leaving playGame()')
     return
   }
 }
 
 async function checkGame(game) {
-  console.log('checkGame() called ...')
+  myLog('checkGame() called ...')
   try {
     let finished = false, won = false
     let checkPlayer = game.lastPlayer
+
+    // Check vertical
     let board = []
     game.state.forEach(column => {
       board.push(column.moves.reduce((acc, el) => acc += el.toString(), ""))
     })
-    // console.log(board)
     board.forEach(vertical => {
       if (vertical.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
         game.finished = true
@@ -205,294 +392,21 @@ async function checkGame(game) {
         resultMsg.message = "Game won by Player " + checkPlayer
       }
     })
+    if (!game.finished) {
+      // Check horizontal
+    }
+    if (!game.finished) {
+      // Check diagonal
+    }
   } catch (err) {
-    console.log("Error:", err)
+    myLog("Error:", err)
     resultMsg.status = false
     errorMsg = { error_message: 'Error checking game'
       , error_id: 401 }
-    console.log(errorMsg)
-    return err
   }
   finally {
-    console.log('leaving checkGame()')
+    myLog('leaving checkGame()')
   }
-}
-async function playRequest() {
-  console.log("playRequest() called ...")
-  const NEWGAME    = 1
-  const CANCELGAME = 2
-  const PLAYGAME   = 3
-
-  if (resultMsg.action === NEWGAME) {
-    try {
-      await newGame()
-    } catch (err) {
-      console.log("Error: ", err)
-    }
-    finally {
-      console.log('leaving checkRequest()')
-    }
-  }
-  if (resultMsg.action === CANCELGAME) {
-    try {
-      await cancelGame()
-    } catch (err) {
-      console.log("Error: ", err)
-    }
-  }
-  if (resultMsg.action === PLAYGAME) {
-    try {
-      await playGame()
-    } catch (err) {
-      console.log("Error: ", err)
-    }
-  }
-
-  console.log("leaving playRequest()")
-}
-
-async function checkRequest() {
-  console.log("checkRequest() called ...")
-
-  const NEWGAME    = 1
-  const CANCELGAME = 2
-  const PLAYGAME   = 3
-
-  if (resultMsg.action === NEWGAME) {
-    try {
-      await Game.findOne({finished: false})
-        .then( game => {
-          if (!game === null) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'Still an active game, new game not created'
-              , error_id: 203 }
-          }
-          return game
-        })
-        .catch( err => {
-          console.log("Error: ", err)
-          resultMsg.status = false
-          errorMsg = {
-              error_message: 'Error creating new game'
-            , error_id: 202 }
-          return err
-        })
-    } catch (err) {
-      console.log("Error: ", err)
-      resultMsg.status = false
-      errorMsg = {
-          error_message: 'Error creating new game'
-        , error_id: 201 }
-      return err
-    }
-  }
-
-  if (resultMsg.action === CANCELGAME) {
-    try {
-      await Game.findOne({finished: false})
-        .then( game => {
-          if (game === null) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'No active game, nothing to cancel'
-              , error_id: 213 }
-          }
-          return game
-        })
-        .catch( err => {
-          console.log("Error: ", err)
-          resultMsg.status = false
-          errorMsg = {
-              error_message: 'Error searching for game'
-            , error_id: 212 }
-          return err
-        })
-    } catch (err) {
-      console.log("Error: ", err)
-      resultMsg.status = false
-      errorMsg = {
-          error_message: 'Error searching for game'
-        , error_id: 211 }
-      return err
-    }
-  }
-
-  if (resultMsg.action === PLAYGAME) {
-    try {
-      await Game.findOne({finished: false})
-        .then( game => {
-          if (game === null) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'No active game, no play possible'
-              , error_id: 223 }
-          } else if (game.nrOfPlays === 42 /* MAXNROFPLAYS */) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'Maximum nr of plays reached'
-              , error_id: 224 }
-          } else if (game.lastPlayer === resultMsg.player) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'No 2 consecutive plays by same player'
-              , error_id: 225 }
-          } else if (game.lastPlayer === 0 && resultMsg.player === 2) {
-            resultMsg.status = false
-            errorMsg = {
-                error_message: 'Game must be started by player 1'
-              , error_id: 226 }
-          } else {
-            let column = game.state.filter(
-              ( col ) => col.columnNumber === resultMsg.value
-            )
-            // game.state.forEach( column =>  console.log(column.columnNumber) )
-            // console.log("state", game.state)
-            console.log("column", column)
-            console.log("moves", column[0].moves)
-            // resultMsg.status = false
-            // errorMsg = {error_message: "DEBUGGING", error_id: 9999}
-
-            let moves = column[0].moves
-            console.log(moves)
-            if (moves.length >= 6) {
-              resultMsg.status = false
-              errorMsg = {
-                  error_message: 'Column is full'
-                , error_id: 227 }
-            }
-          }
-        })
-        .catch( err => {
-          console.log("Error: ", err)
-          resultMsg.status = false
-          errorMsg = {
-              error_message: 'Error searching for game'
-            , error_id: 222 }
-        })
-    } catch (err) {
-      console.log("Error: ", err)
-      resultMsg.status = false
-      errorMsg = {
-          error_message: 'Error searching for game'
-        , error_id: 221 }
-      return err
-    }
-  }
-}
-
-const checkRequestBody = (req, res) => {
-  console.log("checkRequestBody() called ...")
-  // Import constants
-  // const {
-  //     NEWGAME, CANCELGAME, PLAYGAME
-  //   , MINVALUE, MAXVALUE, MINPLAYER, MAXPLAYER
-  //   , ERRACTIONUNDEF, ERRACTIONNOINT, ERRACTIONOUTOB
-  //   , ERRVALUEUNDEF, ERRVALUENOINT, ERRVALUEOUTOB
-  //   , ERRPLAYERUNDEF, ERRPLAYERNOINT, ERRPLAYEROUTOB
-  //   } = require('../validations/crbConstants')
-
-//==================
-// Why won't these import?
-  const NEWGAME    = 1
-  const CANCELGAME = 2
-  const PLAYGAME   = 3
-  const MINVALUE   = 1
-  const MAXVALUE   = 7
-  const MINPLAYER  = 1
-  const MAXPLAYER  = 2
-  const ERRACTIONUNDEF = {
-      error_message: "No action defined",
-      error_id: 100
-    }
-  const ERRACTIONNOINT = {
-      error_message: "Invalid action defined (NOINT)",
-      error_id: 101
-    }
-  const ERRACTIONOUTOB = {
-      error_message: "Invalid action defined (OUTOFBOUNDS)",
-      error_id: 102
-    }
-  const ERRVALUEUNDEF = {
-      error_message: "No value defined",
-      error_id: 110
-    }
-  const ERRVALUENOINT = {
-      error_message: "Invalid value defined (NOINT)",
-      error_id: 111
-    }
-  const ERRVALUEOUTOB = {
-      error_message: "Invalid value defined (OUTOFBOUNDS)",
-      error_id: 112
-    }
-  const ERRPLAYERUNDEF = {
-      error_message: "No player defined",
-      error_id: 120
-    }
-  const ERRPLAYERNOINT = {
-      error_message: "Invalid player defined (NOINT)",
-      error_id: 121
-    }
-  const ERRPLAYEROUTOB = {
-      error_message: "Invalid player defined (OUTOFBOUNDS)",
-      error_id: 122
-    }
-//==================
-
-  // Reset messages
-  resultMsg = { action: 0, value: 0, player: 0,
-    status: true, message: "", state: {} }
-  errorMsg  = {}
-  // Check Action
-  if ( req.body.action === undefined ) {
-    errorMsg = ERRACTIONUNDEF
-    resultMsg.status = false
-  } else if ( !Number.isInteger(req.body.action) ) {
-    errorMsg = ERRACTIONNOINT
-    resultMsg.status = false
-  } else if ( ![NEWGAME, CANCELGAME, PLAYGAME].includes(req.body.action) ) {
-    errorMsg = ERRACTIONOUTOB
-    errorMsg.error_message += " (" + req.body.action + ")"
-    resultMsg.status = false
-  } else {
-    resultMsg.action = req.body.action
-  }
-
-  // Check value if playing game
-  if (resultMsg.status && resultMsg.action === PLAYGAME) {
-    if ( req.body.value === undefined ) {
-      errorMsg = ERRVALUEUNDEF
-      resultMsg.status = false
-    } else if ( !Number.isInteger(req.body.value) ) {
-      errorMsg = ERRVALUENOINT
-      resultMsg.status = false
-    } else if ( req.body.value < MINVALUE || req.body.value > MAXVALUE ) {
-      errorMsg = ERRVALUEOUTOB
-      errorMsg.error_message += " (" + req.body.value + ")"
-      resultMsg.status = false
-    } else {
-      resultMsg.value = req.body.value
-    }
-  }
-
-  // Check player if playing game
-  if (resultMsg.status && resultMsg.action === PLAYGAME) {
-    if ( req.body.player === undefined ) {
-      errorMsg = ERRPLAYERUNDEF
-      resultMsg.status = false
-    } else if ( !Number.isInteger(req.body.player) ) {
-      errorMsg = ERRPLAYERNOINT
-      resultMsg.status = false
-    } else if ( req.body.player < MINPLAYER || req.body.player > MAXPLAYER ) {
-      errorMsg = ERRPLAYEROUTOB
-      errorMsg.error_message += " (" + req.body.player + ")"
-      resultMsg.status = false
-    } else {
-      resultMsg.player = req.body.player
-    }
-  }
-  console.log("leaving checkRequestBody()")
-  return [resultMsg, errorMsg]
 }
 
 module.exports = app
