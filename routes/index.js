@@ -12,7 +12,10 @@ let resultMsg = { action: 0, value: 0, player: 0,
     errorMsg  = {} // error_message:"", error_id:0
 
 const consoleLog = false,
-   myLog = (line) => {if (consoleLog) {console.log(line)}}
+   myLog = (t1, t2) => {if (consoleLog) {
+     t2 = t2 === undefined ? "" : t2
+     console.log(t1, t2)
+   }}
 
 myLog("===================")
 // Catch all
@@ -385,18 +388,64 @@ async function checkGame(game) {
     game.state.forEach(column => {
       columns.push(column.moves.reduce((acc, el) => acc += el.toString(), ""))
     })
-    columns.forEach(vertical => {
-      if (vertical.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
+    columns = columns.map( column => column.padEnd(6, "o"))
+    columns.forEach(column => {
+      if (column.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
         game.finished = true
         game.won      = true
         resultMsg.message = "Game won by Player " + checkPlayer + "!"
       }
     })
+
     if (!game.finished) {
       // Check horizontal
+      let lines = [], line = ""
+      for (i = 0; i < 6; i++) {
+        line = ""
+        columns.forEach( vertical => line += vertical[i] )
+        lines.push(line)
+      }
+      lines.forEach( line => {
+        if (line.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
+          game.finished = true
+          game.won      = true
+          resultMsg.message = "Game won by Player " + checkPlayer + "!"
+        }
+      })
     }
+
     if (!game.finished) {
       // Check diagonal
+      let diagonals = []
+      for (index = 0; index < 6; index ++) {
+        if (index < 4) {
+          diagonals.push(columns[index][0]
+            + columns[index + 1][1]
+            + columns[index + 2][2]
+            + columns[index + 3][3])
+          diagonals.push(columns[index][1]
+            + columns[index + 1][2]
+            + columns[index + 2][3]
+            + columns[index + 3][4])
+        }
+        if (index > 2) {
+          diagonals.push(columns[index][0]
+            + columns[index - 1][1]
+            + columns[index - 2][2]
+            + columns[index - 3][3])
+          diagonals.push(columns[index][1]
+            + columns[index - 1][2]
+            + columns[index - 2][3]
+            + columns[index - 3][4])
+        }
+      }
+      diagonals.forEach( diagonal => {
+        if (diagonal.indexOf(checkPlayer.toString().repeat(4)) > -1 ) {
+          game.finished = true
+          game.won      = true
+          resultMsg.message = "Game won by Player " + checkPlayer + "!"
+        }
+      })
     }
   } catch (err) {
     myLog("Error:", err)
